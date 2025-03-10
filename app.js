@@ -1,388 +1,294 @@
-/*==========================================*/
-//               *selectors*                //
-/*==========================================*/
+import { SnackBarController } from "./snackbarcontroller.js";
+import { Geolocator } from "./geolocator.js"
+import { StorageManager } from "./storagemanager.js"
+import { ProgressBar } from "./progressbar.js";
+import { TimeDateUtils } from "./timedateutils.js";
+import { ThemeManager } from "./thememanager.js";
+import { Weather } from "./weather.js";
 
-const input = document.querySelector("#input");
-const add = document.querySelector(".add");
+const snackBar = new SnackBarController(document.getElementById("snackbar"));
+const progressBar = new ProgressBar(document.querySelector(".bar"));
+const themeManager = new ThemeManager("dark-light");
+
 const todoList = document.querySelector("#todo-container");
-const snackbar = document.getElementById("snackbar");
-let darkMode = document.querySelector(".dark-mode");
-let lightMode = document.querySelector(".light-mode");
-let dark_body = document.body;
-let dark_input = document.querySelector("form input");
-let dark_taskItem = document.querySelector(".task-item");
-let dark_formBtn = document.querySelector("form button");
-let dark_title = document.querySelector("header h1");
-let currentTime = document.querySelector(".currentTime");
-let currentDesc = document.querySelector(".currentDesc");
-let currentWeather = document.querySelector(".currentWeather");
-let currentLocation = document.querySelector(".currentLocation");
-let progressBar = document.querySelector(".bar");
-/*==========================================*/
-//            *Event listeners*             //
-/*==========================================*/
+const inputField = document.querySelector("#input");
+const addButton = document.querySelector(".add");
 
-// Your code to run since DOM is loaded and ready
-document.addEventListener("DOMContentLoaded", () => renderTodos());
-add.addEventListener("click", addTodo);
-todoList.addEventListener("click", deleteButton);
-todoList.addEventListener("click", checkButton);
-todoList.addEventListener("click", editButton);
-darkMode.addEventListener("click", toggleDark);
-lightMode.addEventListener("click", toggleDark);
+const allDoneButton = document.querySelector("#all-done");
+const allUndoneButton = document.querySelector("#all-undone");
+const clearButton = document.querySelector("#clear");
 
-/*==========================================*/
-//                *functions*               //
-/*==========================================*/
+const themeSwitchButton = document.querySelector(".dark-light");
+const currentTimeText = document.querySelector(".currentTime");
 
-//options - navigator => get current location
-var options = {
-  enableHighAccuracy: true,
-  timeout: 5000,
-  maximumAge: 0,
-};
-
-function success(pos) {
-  var crd = pos.coords;
-  weather(crd.latitude, crd.longitude);
+document.addEventListener("DOMContentLoaded", () => main())
+function main() {
+  setEventListeners();
+  startTimeTextUpdater();
+  getWeatherData();
+  renderTodos();
+  themeManager.applySavedTheme();
 }
 
-function error(err) {
+function startTimeTextUpdater() {
+  setInterval(() => {
+    currentTimeText.innerHTML = TimeDateUtils.currentTimeFormatted();
+  }, 1000);
+}
+
+function getWeatherData() {
+  Geolocator.getCurrentPosition(locationFound, locationNotFound);
+}
+
+function locationFound(pos) {
+  Weather.fetchAt(pos.latitude, pos.longitude).then((data) => {
+    displayWeatherInformation(data);
+  });
+}
+
+function locationNotFound(err) {
   console.warn("ERROR(" + err.code + "): " + err.message);
 }
 
-//will start weather function in seccess function
-navigator.geolocation.getCurrentPosition(success, error, options);
+function setEventListeners() {
+  allDoneButton.addEventListener("click", () => {setAllCompletions(true);});
+  allUndoneButton.addEventListener("click", () => {setAllCompletions(false);});
+  clearButton.addEventListener("click", clearStorage);
+  
+  addButton.addEventListener("click", addTodo);
 
-//get current location weather(connected with navigator)
-function weather(latitude, longitude) {
-  fetch(
-    `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&appid=cc899ff07e1cdf8cd42fe037272216fb&units=metric`
-  )
-    .then(function (resp) {
-      return resp.json();
-    }) // Convert data to json
-    .then(function (data) {
-      if (data.main.temp > 0) {
-        currentWeather.style.color = "#d19a66";
-      } else {
-        currentWeather.style.color = "#61aeee";
-      }
-      currentWeather.style.fontSize = "3rem";
-      //insert weather data
-      currentWeather.innerHTML = data.main.temp.toFixed(1) + "&deg;";
-      currentDesc.innerHTML = data.weather[0].description;
-      currentLocation.innerHTML = data.name;
+  todoList.addEventListener("click", clickedOnTodos);
 
-      //based on local time automatically switch to dark theme
-      if (
-        new Date() <= new Date(data.sys.sunrise * 1000) ||
-        new Date() >= new Date(data.sys.sunset * 1000)
-      ) {
-        toggleDark();
-      }
-    })
-    .catch((err) => {
-      throw err;
-    });
+  themeSwitchButton.addEventListener("click", () => {themeManager.toggleDarkMode();});
 }
 
-//get current time with a format "YYYY/MM/DD **:**:**"
-function now() {
-  let today = new Date();
-  var year = today.getFullYear();
-  var month = (today.getMonth() + 1);
-  var dateTime = today.getDate();
+function displayWeatherInformation(data) {
+  const currentDesc = document.querySelector(".currentDesc");
+  const currentWeather = document.querySelector(".currentWeather");
+  const currentLocation = document.querySelector(".currentLocation");
 
-  var date = year;
-  date += ((month < 10) ? '/0' : "/") + month;
-  date += ((date < 10) ? '/0' : "/") + dateTime;
+  currentWeather.style.color = data.temperature > 0 ? "#d19a66" : "#61aeee";
+  currentWeather.style.fontSize = "3rem";
 
-  var hour = today.getHours();
-  var minute = today.getMinutes();
-  var second = today.getSeconds();
+  currentWeather.innerHTML = data.temperature.toFixed(1) + "&deg;";
+  currentDesc.innerHTML = data.description;
+  currentLocation.innerHTML = data.name;
 
-  var time = ((hour < 10) ? '0' : '') + hour;
-    if (hour == 0)
-      time = '00';
-  time += ((minute < 10) ? ':0' : ':') + minute;
-  time += ((second < 10) ? ':0' : ':') + second;
-  return `${date}\n${time}`;
-}
-setInterval(currentT, 1000);
-
-function currentT() {
-  currentTime.innerHTML = String(now());
-}
-
-function addTodo(e) {
-  //prevnent form from submitting
-  e.preventDefault();
-  if (input.value) {
-    addTodoToLocalStorage(input.value);
-    input.value = "";
-    renderTodos();
+  if (TimeDateUtils.nightTimeNow(data.sunsetUNIXTime, data.sunriseUNIXTime)) {
+    themeManager.setDarkMode(true);
   }
 }
 
 function renderTodos() {
-  // remove all the current dom elements as we're going to re-create them
   // this is inefficient but there's not an easy way to keep localStorage and the DOM in sync
   // without a framework
-  todoList.innerHTML = "";
+  clearTodoListDOM();
 
-  // read todo's from local storage and display them
-  let checkedItem = 0;
-  let progressP = 0;
-  const todos = JSON.parse(localStorage.getItem("todos"));
-  //console.log(todos.length);
+  let checkedItems = 0;
+  let progressPercentage = 0;
+
+  const todos = StorageManager.loadObject("todos");
+
   if (todos) {
-    for (i = 0; i < todos.length; i++) {
-      if (todos[i].completed) {
-        checkedItem++;
-      }
-    }
-    progressP = (checkedItem / todos.length) * 100;
-  }
-  progressBar.style.width = progressP + "%";
-  console.log(progressBar.style.width);
-  progressBar.innerHTML = progressP.toFixed(1) + "%";
+    todos.forEach(todo => {
+      todo.completed ? checkedItems++ : null;
+      createTodoItem(todo)
+    });
 
-  // check that we're not creating the item again in the dom
-  todos?.forEach((t) => createTodoItem(t));
+    progressPercentage = (checkedItems / todos.length) * 100;
+  }
+
+  progressBar.setProgress(progressPercentage);
 }
 
-function addTodoToLocalStorage(text) {
+function appendToSavedTodos(text) {
   let todos = [];
 
-  // get any current todo's
-  if (localStorage.hasOwnProperty("todos")) {
-    todos = JSON.parse(localStorage.getItem("todos") || "");
+  if (StorageManager.objectSaved("todos")) {
+    todos = StorageManager.loadObject("todos");
   }
 
-  if (todos.map((todo) => todo.text).includes(text)) return;
+  if (todoIsPresent(todos, text)) return;
 
-  // each todo will be an object of following properties
-  let newTodo = {
+  const newTodo = {
     text,
     completed: false,
-    date: now(),
+    date: TimeDateUtils.currentTimeFormatted(),
   };
 
-  // add new todo to todos array
-  updatedTodos = [...todos, newTodo];
-
-  // push new todos to local storage
-  localStorage.setItem("todos", JSON.stringify(updatedTodos));
+  const updatedTodosList = [...todos, newTodo];
+  saveTodos(updatedTodosList);
 }
 
-function createTodoItem(todo) {
-  // get the container
-  const tasksWrapper = document.getElementById("todo-container");
-  // create the li element
-  const taskItem = document.createElement("li");
-  taskItem.classList.add("task-item");
+function clickedOnTodos(e) {
+  const todos = StorageManager.loadObject("todos");
+  let actionPerformed = false;
 
-  // create a div inside the list element
-  const taskInner = document.createElement("div");
-  taskInner.classList.add("task-inner");
-  if (todo.completed) taskInner.classList.add("taskCompleted");
-
-  // create a container for the buttons
-  const taskButtons = document.createElement("div");
-  taskButtons.classList.add("buttons");
-
-  // create container for task text
-  const taskText = document.createElement("div");
-  taskText.classList.add("task-text");
-  taskText.innerText = todo.text;
-
-  // create the buttons
-  //completed tasks
-  const completedBtn = document.createElement("button");
-  completedBtn.innerHTML = `<i class="fa fa-check"></i>`;
-  completedBtn.classList.add("completed");
-  taskButtons.appendChild(completedBtn);
-
-  const editBtn = document.createElement("button");
-  editBtn.innerHTML = `<i class="fa fa-pencil-alt"></i>`;
-  editBtn.classList.add("edited");
-  taskButtons.appendChild(editBtn);
-
-  //completed tasks
-  const trashBtn = document.createElement("button");
-  trashBtn.innerHTML = `<i class="fa fa-trash"></i>`;
-  trashBtn.classList.add("trash");
-  taskButtons.appendChild(trashBtn);
-
-  // get date
-  let taskDate = document.createElement("div");
-  taskDate.setAttribute("class", "task-date");
-  taskDate.textContent = todo.date;
-  if (todo.completed) taskDate.classList.add("taskCompleted");
-
-  // add the taskDate to the taskItem
-  taskItem.appendChild(taskDate);
-
-  // add the buttons div and text to the tasksInner
-  taskInner.appendChild(taskText);
-  taskInner.appendChild(taskButtons);
-
-  // add the taskInner to the taskItem
-  taskItem.appendChild(taskInner);
-
-  // add the taskItem to the tasksWrapper
-  tasksWrapper.appendChild(taskItem);
-}
-
-function deleteButton(e) {
-  const item = e.target;
-  const todos = JSON.parse(localStorage.getItem("todos"));
-  if (item.classList.contains("trash")) {
-    const index = todos
-      .map(({ text }) => text)
-      .indexOf(item.parentElement.parentElement.innerText);
-
-    if (index > -1) {
-      todos.splice(index, 1);
-      showSnackBar("Deleted Todo Successfully..");
-    }
-    localStorage.setItem("todos", JSON.stringify(todos));
+  if (clickedOnClass(e, "trash")) {
+    deleteButton(e.target, todos);
+    actionPerformed = true;
+  } else if (clickedOnClass(e, "completed")) {
+    checkButton(e.target, todos);
+    actionPerformed = true;
+  } else if (clickedOnClass(e, "edited")) {
+    editButton(e.target, todos);
+    actionPerformed = true;
   }
-  renderTodos();
+
+  actionPerformed ? renderTodos() : null;
 }
 
-function checkButton(e) {
-  const item = e.target;
-  const todos = JSON.parse(localStorage.getItem("todos"));
-  if (item.classList.contains("completed")) {
-
-    let clickedItemIndex = todos
-      .map(({ text }) => text)
-      .findIndex((ele) => ele === item.parentElement.parentElement.innerText);
-
-    todos[clickedItemIndex].completed = !todos[clickedItemIndex].completed;
-    localStorage.setItem("todos", JSON.stringify(todos));
+function addTodo(e) {
+  //prevent form from submitting
+  e.preventDefault();
+  if (inputField.value) {
+    appendToSavedTodos(inputField.value);
+    inputField.value = "";
+    renderTodos();
   }
-  renderTodos();
 }
 
-function editButton(e) {
-  const item = e.target;
-  const todos = JSON.parse(localStorage.getItem("todos"));
-  if (item.classList.contains("edited")) {
-    let flag = prompt("Please enter your new description of todolist","");
-    if(flag != null && flag != ""){
-    const index = todos
-    .map(({ text }) => text)
-    .indexOf(item.parentElement.parentElement.innerText);
+function deleteButton(clickedButton, todos) {
+  const index = indexOfTodo(todos, getTodoText(clickedButton));
 
-    if (index > -1) {
-    todos.splice(index, 1);
-
-    let dateTime = item.parentElement.parentElement.parentElement.innerText ;
-    let tempobj = {text: flag, completed: false, date: dateTime.slice(0, 19)};
-    todos.splice(index, 0,tempobj);
-    showSnackBar("Todo List Updated Successfully...");
-    }
-    localStorage.setItem("todos", JSON.stringify(todos));
-    }
+  if (index > -1) {
+    deleteElementAt(index, todos);
+    snackBar.show("Deleted Todo Successfully..");
   }
-  renderTodos();
+
+  saveTodos(todos);
 }
 
-function showSnackBar(msg) {
-  snackbar.innerText = msg;
-  snackbar.className = "show";
-  setTimeout(function () {
-    snackbar.className = "";
-  }, 3000);
+function checkButton(clickedButton, todos) {
+    const index = indexOfTodo(todos, getTodoText(clickedButton));
+
+    todos[index].completed = !todos[index].completed;
+
+    saveTodos(todos);
+}
+
+function editButton(clickedButton, todos) {
+    let text = prompt("Please enter your new description of todolist","");
+
+    if(text != null && text != "") {
+      const index = indexOfTodo(todos, getTodoText(clickedButton));
+
+      if (index > -1) {
+        deleteElementAt(index, todos);
+
+        let dateTime = clickedButton.parentElement.parentElement.parentElement.innerText;
+        const updatedTodo = {text: text, completed: false, date: dateTime.slice(0, 19)};
+        replaceElementAt(index, todos, updatedTodo);
+
+        snackBar.show("Todo List Updated Successfully...");
+      }
+
+      saveTodos(todos);
+    }
+}
+
+function setAllCompletions(value) {
+  let actionConfirmed = false;
+
+  if (value && confirm("Do you really want to set all-done?") || !value && confirm("Do you really want to undone all TodoList?")) {
+    actionConfirmed = true;
+  } else { return; }
+
+  const todos = StorageManager.loadObject("todos");
+
+  if (actionConfirmed) {
+    todos.map((todo) => {
+      if (value && !todo.completed) {
+        todo.completed = true;
+      } else if (!value && todo.completed) {
+        todo.completed = false;
+      }
+    })
+
+    saveTodos(todos);
+  }
 }
 
 function clearStorage() {
   if (confirm("Do you really want to clear?")) {
-     localStorage.removeItem("todos");
+    StorageManager.deleteObject("todos");
   }
 }
 
-function allDoneStorage() {
-  var items = JSON.parse(localStorage.getItem("todos"));
-  if (confirm("Do you really want to set all-done?")) {
-    items.map(function (e) {
-      if (!e.completed) {
-        e.completed = true;
-      }
-    });
-    localStorage.setItem("todos", JSON.stringify(items));
-  }
+function createTodoButton(iconclass, mainclass) {
+  const button = document.createElement("button");
+  button.innerHTML = `<i class="fa ${iconclass}"></i>`;
+  button.classList.add(mainclass);
+  return button
 }
 
-function allUnDoneStorage() {
-  var items = JSON.parse(localStorage.getItem("todos"));
-  if (confirm("Do you really want to undone all TodoList?")) {
-    items.map(function (e) {
-      if (e.completed) {
-        e.completed = false;
-      }
-    });
-    localStorage.setItem("todos", JSON.stringify(items));
-  }
+function createTodoItem(todo) {
+  const todosContainer = document.getElementById("todo-container");
+  
+  const todoItem = document.createElement("li");
+  todoItem.classList.add("task-item");
+
+  const todoItemInner = document.createElement("div");
+  todoItemInner.classList.add("task-inner");
+  crossIfCompleted(todoItemInner, todo);
+
+  const todoButtonsContainer = document.createElement("div");
+  todoButtonsContainer.classList.add("buttons");
+
+  const todoText = document.createElement("div");
+  todoText.classList.add("task-text");
+  todoText.innerText = todo.text;
+
+  todoButtonsContainer.appendChild(createTodoButton("fa-check", "completed"));
+  todoButtonsContainer.appendChild(createTodoButton("fa-pencil-alt", "edited"));
+  todoButtonsContainer.appendChild(createTodoButton("fa-trash", "trash"));
+
+  let todoDate = document.createElement("div");
+  todoDate.setAttribute("class", "task-date");
+  todoDate.textContent = todo.date;
+  crossIfCompleted(todoDate, todo);
+
+  todoItem.appendChild(todoDate);
+  todoItem.append(todoItemInner);
+
+  todoItemInner.appendChild(todoText);
+  todoItemInner.appendChild(todoButtonsContainer);
+
+  todosContainer.appendChild(todoItem);
 }
 
-
-function toggleDark() {
-  if (!darkMode.classList.contains("display-none")) {
-    darkMode.classList.add("display-none");
-    lightMode.classList.remove("display-none");
-    dark_body.classList.add("dark");
-    dark_input.classList.add("dark");
-    dark_formBtn.classList.add("dark");
-    dark_title.style.color = "white";
-  } else {
-    lightMode.classList.add("display-none");
-    darkMode.classList.remove("display-none");
-    dark_body.classList.remove("dark");
-    dark_input.classList.remove("dark");
-    dark_formBtn.classList.remove("dark");
-    dark_title.style.color = "#05445e";
-  }
+function saveTodos(todos) {  
+  StorageManager.saveObjectAs(todos, "todos");
 }
 
-const dark_light_Item = localStorage.getItem("dark-light");
-const dark_light_button = document.querySelector(".dark-light");
-let temp = localStorage.getItem(".dark-light");
-
-function enableDarkMode(){
-  document.body.classList.add('dark-light');
-  localStorage.setItem('dark-light', 'enabled');
-  darkMode.classList.add("display-none");
-  lightMode.classList.remove("display-none");
-  dark_body.classList.add("dark");
-  dark_input.classList.add("dark");
-  dark_formBtn.classList.add("dark");
-  dark_title.style.color = "white";
+function clickedOnClass(e, classname) {
+  return e.target.classList.contains(classname);
 }
 
-function disableDarkMode() {
-  document.body.classList.remove('dark-light');
-  localStorage.setItem('dark-light', null);
-  lightMode.classList.add("display-none");
-  darkMode.classList.remove("display-none");
-  dark_body.classList.remove("dark");
-  dark_input.classList.remove("dark");
-  dark_formBtn.classList.remove("dark");
-  dark_title.style.color = "#05445e";
+function todoIsPresent(todos, text) {
+  return (todos.map((todo) => todo.text).includes(text));
 }
 
-if (dark_light_Item === 'enabled') {
-  enableDarkMode();
+function getTodoText(buttonElement) {
+  return buttonElement.parentElement.parentElement.innerText;
 }
 
-dark_light_button.addEventListener('click', () => {
-  temp = localStorage.getItem('dark-light');
-  if (temp !== 'enabled') {
-    enableDarkMode();
-  } else {
-    disableDarkMode();
-  }
-});
+function indexOfTodo(todos, text) {
+    return todos.findIndex((todo) => {return todo.text === text});
+}
+
+function deleteElementAt(index, arr) {
+  arr.splice(index, 1);
+}
+
+function replaceElementAt(index, arr, value) {
+  arr.splice(index, 0, value);
+}
+
+function crossIfCompleted(element, todo) {
+  if (todo.completed) element.classList.add("taskCompleted");
+}
+
+function clearTodoListDOM() {
+  todoList.innerHTML = "";
+}
