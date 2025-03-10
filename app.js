@@ -137,7 +137,7 @@ function renderTodos() {
   const todos = JSON.parse(localStorage.getItem("todos"));
   //console.log(todos.length);
   if (todos) {
-    for (i = 0; i < todos.length; i++) {
+    for (let i = 0; i < todos.length; i++) {
       if (todos[i].completed) {
         checkedItem++;
       }
@@ -170,7 +170,7 @@ function addTodoToLocalStorage(text) {
   };
 
   // add new todo to todos array
-  updatedTodos = [...todos, newTodo];
+  const updatedTodos = [...todos, newTodo];
 
   // push new todos to local storage
   localStorage.setItem("todos", JSON.stringify(updatedTodos));
